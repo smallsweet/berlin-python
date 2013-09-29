@@ -3,7 +3,6 @@
 import json
 import logging
 import random
-import re
 
 class Node:
   def __init__(self, id, type, owner=None, units=0):
@@ -11,7 +10,7 @@ class Node:
     self.type=type
     self.owner=owner
     self.units=units
-    self.edges=[] # outgoing edges
+    self.edges=[] # outgoing edges (id)
   def __repr__(self):
     return 'Node: id:%s, type:%s, owner:%s, units:%s, edges:%s' % \
         (self.id, self.type, self.owner, self.units, self.edges)
@@ -27,7 +26,7 @@ class Map:
         self.types[t['name']]['units_per_turn'] = t['soldiers_per_turn']
 
       self.nodes = {} # should probably be a list, but largest map has
-                      # only 24 nodes, so whatever
+                      # less than 30 nodes, so whatever
       for n in mapdict['nodes']:
         self.nodes[n['id']] = Node(n['id'], n['type'])
       for p in mapdict['paths']:
@@ -47,6 +46,75 @@ class Map:
       self.nodes[s['node_id']].owner = s['player_id']
       self.nodes[s['node_id']].units = s['number_of_soldiers']
 
+  def floodFill(self, startnode, evalfunc):
+    '''
+    Starts from given node and grows through nodes for which evalfunc(node)
+    evaluates as true.
+    Returns a list of connected nodes (ids) that match the condition.
+    '''
+    result = []
+    if evalfunc(startnode) is False:
+      return result
+    result.append(startnode.id)
+    visited = set([startnode.id])
+    fringe = set(startnode.edges)
+    while len(fringe) > 0:
+      curr = fringe.pop()
+      if curr in visited:
+        continue
+      visited.add(curr)
+      if evalfunc(self.nodes[curr]) is False:
+        continue
+      result.append(curr)
+      for neighbour in self.nodes[curr].edges:
+        if neighbour in visited:
+          continue
+        fringe.add(neighbour)
+    return result
+
+  def dijkstra(self, startnode, evalfunc):
+    '''
+    returns shortest path between startnode and the closest node for which
+    evalfunc returns true. If there are multiple paths of equal length, it 
+    will just return one of them.
+    path will be an ordered list of nodes that must be visited (not including
+    start), or None if no path exists
+    '''
+    maxdist = 900000
+    path = []
+    visited = set()
+    fringe = set()
+    distance = {}
+    for i in self.nodes.keys():
+      distance[i] = maxdist
+    distance[startnode.id] = 0
+    parent = {startnode.id: None}
+    fringe.add(startnode.id)
+    while len(fringe) > 0:
+      # find best candidate in fringe
+      # could use a heap here, but quick and dirty today
+      current = min(distance, key=distance.get)
+      fringe.remove(current)
+      if evalfunc(self.nodes[current]) is True:
+        while parent[current] is not None:
+          path.append(current)
+          current = parent[current]
+        path.reverse()
+        return path
+      visited.add(current)
+      curdist = distance[current]
+      del distance[current]
+      if curdist == maxdist:
+        # cannot find path
+        return None
+      for n in self.nodes[current].edges:
+        if n in visited:
+          continue
+        if distance[n] > curdist + 1:
+          distance[n] = curdist + 1
+          parent[n] = current
+          fringe.add(n)
+
 class Game:
   def __init__(self, parsed_request):
     try:
@@ -59,8 +127,6 @@ class Game:
       self.myself = parsed_request['infos']['player_id']
       self.timeout = parsed_request['infos']['time_limit_per_turn']
       self.directed = parsed_request['infos']['directed']
-      print 'map'
-      print parsed_request['map']
       self.m = Map(parsed_request['map'], self.directed)
       self.m.update(parsed_request['state'])
     except:
@@ -71,6 +137,12 @@ class Game:
     return 'Game: %s, %s, %s, %s, %s, %s, %s, %s' \
         % (self.action, self.game_id, self.maxturns, self.turn, self.players,
             self.myself, self.timeout, self.m)
+
+  def generate_turn(self):
+    '''
+    do something here
+    '''
+    return move_at_random(self)
 
 class Response:
   def __init__(self):
@@ -136,8 +208,17 @@ def test():
           continue
         request[key] = json.loads(value[0])
   g = parse_request(request)
-  response = move_at_random(g)
-  print response
+  print g.generate_turn()
+  n = g.m.nodes[5]
+  l = g.m.floodFill(n, lambda x: x.owner is None )
+  print sorted(l)
+  l = g.m.dijkstra(n, lambda x: x.id == 17 )
+  print l
+  l = g.m.dijkstra(n, lambda x: x.id == 22 )
+  print l
+  for i in range(10000):
+    l = g.m.dijkstra(n, lambda x: x.id == 28 )
+  print l
 
 if __name__ == '__main__':
   main()
