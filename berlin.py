@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import json
-import logging, os, sys
+import logging
 import random
 import re
 
@@ -124,13 +124,20 @@ def main():
   test()
  
 def test():
-  request = ''
-  commentre = re.compile('//.*')
-  for line in file('tests/test1.json','r').readlines():
-    request += re.sub(commentre, '', line)
-
-  m = parse_request(r) 
-  logging.info('parsed map: ' + str(m))
+  # this mocks server handling
+  import json
+  import urlparse
+  request = {}
+  for key, value in \
+      urlparse.parse_qs(file('tests/test4.urlencoded','r').read()).items():
+        # this a silly hack
+        if key == 'action':
+          request['action'] = value[0]
+          continue
+        request[key] = json.loads(value[0])
+  g = parse_request(request)
+  response = move_at_random(g)
+  print response
 
 if __name__ == '__main__':
   main()
