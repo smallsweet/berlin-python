@@ -3,6 +3,8 @@
 import json
 import logging
 import random
+import heapq
+import time
 
 class Node:
   def __init__(self, id, type, owner=None, units=0):
@@ -80,21 +82,14 @@ class Map:
     path will be an ordered list of nodes that must be visited (not including
     start), or None if no path exists
     '''
-    maxdist = 900000
     path = []
     visited = set()
-    fringe = set()
-    distance = {}
-    for i in self.nodes.keys():
-      distance[i] = maxdist
-    distance[startnode.id] = 0
+    fringe = []
     parent = {startnode.id: None}
-    fringe.add(startnode.id)
+    heapq.heappush(fringe, (0, startnode.id))
     while len(fringe) > 0:
-      # find best candidate in fringe
-      # could use a heap here, but quick and dirty today
-      current = min(distance, key=distance.get)
-      fringe.remove(current)
+      # find best candidate in fringe easy with heap
+      (curdist, current) = fringe.pop()
       if evalfunc(self.nodes[current]) is True:
         while parent[current] is not None:
           path.append(current)
@@ -102,18 +97,28 @@ class Map:
         path.reverse()
         return path
       visited.add(current)
-      curdist = distance[current]
-      del distance[current]
-      if curdist == maxdist:
-        # cannot find path
-        return None
       for n in self.nodes[current].edges:
         if n in visited:
           continue
-        if distance[n] > curdist + 1:
-          distance[n] = curdist + 1
+        found_in_fringe = False
+        for i in range(len(fringe)):
+          # search for the node in the fringe
+          # since we know it's unique use a for loop so we can stop as
+          # soon as we find it
+          (elemdist, element) = fringe[i]
+          if element == n:
+            found_in_fringe = True
+            if elemdist > curdist + 1:
+              elemdist = curdist + 1
+              fringe[i] = (elemdist, element)
+              fringe.sort()
+              parent[n] = current
+              break
+        if not found_in_fringe:
+          heapq.heappush(fringe, (curdist + 1, n))
           parent[n] = current
-          fringe.add(n)
+    # if we get here, there's no path
+    return None
 
 class Game:
   def __init__(self, parsed_request):
@@ -216,9 +221,13 @@ def test():
   print l
   l = g.m.dijkstra(n, lambda x: x.id == 22 )
   print l
+  t0 = time.time()
   for i in range(10000):
     l = g.m.dijkstra(n, lambda x: x.id == 28 )
   print l
+  print "dijkstra 10000 times: %s" % (time.time() - t0)
+  for step in l:
+    print "%d, %s" % (step, g.m.nodes[step].edges)
 
 if __name__ == '__main__':
   main()
