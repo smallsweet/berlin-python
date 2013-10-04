@@ -26,8 +26,8 @@ class MainHandler(tornado.web.RequestHandler):
       return
     if g.action in ['ping', 'turn']:
       # do something useful here
-      response = berlin.move_at_random(g)
-      logging.info("response: " + str(response))
+      response = g.generate_turn()
+      logging.debug("response: " + str(response))
       self.write(str(response))
       self.flush()
       return
@@ -35,12 +35,13 @@ class MainHandler(tornado.web.RequestHandler):
     return
 
 FORMAT = '%(asctime)s %(levelname)s %(message)s'
-logging.basicConfig(format=FORMAT, level=logging.DEBUG)
+logging.basicConfig(format=FORMAT, level=logging.INFO)
 
 application = tornado.web.Application([ (r"/randombot", MainHandler), ])
 
 
 if __name__ == "__main__":
+  print "loaded berlin module %s" % berlin.version
   application.listen(5000)
   tornado.ioloop.IOLoop.instance().start()
 

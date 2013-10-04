@@ -6,16 +6,22 @@ import random
 import heapq
 import time
 
+import ai
+
+version = "0.1"
+
 class Node:
-  def __init__(self, id, type, owner=None, units=0):
+  def __init__(self, id, points, units_per_turn, owner=None, units=0):
     self.id=id
-    self.type=type
+    self.points=points
+    self.units_per_turn=units_per_turn
     self.owner=owner
     self.units=units
     self.edges=[] # outgoing edges (id)
   def __repr__(self):
-    return 'Node: id:%s, type:%s, owner:%s, units:%s, edges:%s' % \
-        (self.id, self.type, self.owner, self.units, self.edges)
+    return 'Node: id:%s, points:%s, units_per_turn:%s owner:%s, units:%s, edges:%s' % \
+        (self.id, self.points, self.units_per_turn,
+            self.owner, self.units, self.edges)
 
 class Map:
   def __init__(self, mapdict, directed = False):
@@ -30,7 +36,10 @@ class Map:
       self.nodes = {} # should probably be a list, but largest map has
                       # less than 30 nodes, so whatever
       for n in mapdict['nodes']:
-        self.nodes[n['id']] = Node(n['id'], n['type'])
+        self.nodes[n['id']] = Node(n['id'],
+            self.types[n['type']]['points'],
+            self.types[n['type']]['units_per_turn'])
+
       for p in mapdict['paths']:
         self.nodes[p['from']].edges.append(p['to'])
         if not self.directed:
@@ -88,9 +97,12 @@ class Map:
     parent = {startnode.id: None}
     heapq.heappush(fringe, (0, startnode.id))
     while len(fringe) > 0:
-      # find best candidate in fringe easy with heap
-      (curdist, current) = fringe.pop()
+      # find best candidate in fringe
+      #print "fringe: ", fringe
+      (curdist, current) = heapq.heappop(fringe)
+      #print "popped ", current
       if evalfunc(self.nodes[current]) is True:
+        #print "found target"
         while parent[current] is not None:
           path.append(current)
           current = parent[current]
@@ -98,16 +110,22 @@ class Map:
         return path
       visited.add(current)
       for n in self.nodes[current].edges:
+        #print "neighbour: ", n
         if n in visited:
+          #print "already been there"
           continue
         found_in_fringe = False
+        # search for the node in the fringe
+        # since we know it's unique use a for loop so we can stop as soon
+        # as we find it
+        # this part we could skip I think, because in these maps all
+        # edges are the same length
+        #print "looking in fringe"
         for i in range(len(fringe)):
-          # search for the node in the fringe
-          # since we know it's unique use a for loop so we can stop as
-          # soon as we find it
           (elemdist, element) = fringe[i]
           if element == n:
             found_in_fringe = True
+            #print "found in fringe"
             if elemdist > curdist + 1:
               elemdist = curdist + 1
               fringe[i] = (elemdist, element)
@@ -115,6 +133,7 @@ class Map:
               parent[n] = current
               break
         if not found_in_fringe:
+          #print "adding to fringe", n
           heapq.heappush(fringe, (curdist + 1, n))
           parent[n] = current
     # if we get here, there's no path
@@ -147,7 +166,7 @@ class Game:
     '''
     do something here
     '''
-    return move_at_random(self)
+    return ai.search_and_destroy(self)
 
 class Response:
   def __init__(self):
@@ -197,7 +216,7 @@ def move_at_random(game):
 
 def main():
   FORMAT = '%(asctime)s %(levelname)s %(message)s'
-  logging.basicConfig(format=FORMAT, level=logging.DEBUG)
+  logging.basicConfig(format=FORMAT, level=logging.INFO)
   test()
  
 def test():
