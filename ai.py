@@ -92,3 +92,54 @@ def search_and_destroy(game):
   logging.info(res)
   return res
 
+def another_bot(game):
+  '''
+  work in progress
+  '''
+  res = berlin.Response()
+  me = game.myself
+  nodes = game.m.nodes.values()
+  logging.info("I am %s" % me)
+  for n in nodes:
+    logging.info(n)
+
+  # helper functions
+  def is_base(node):
+    return node.units_per_turn > 0
+  
+  def is_my_node(node):
+    return node.owner is me 
+  
+  def is_enemy_node(node):
+    return node.owner is not None and node.owner is not me 
+  
+  def prefer_empty_bases(node):
+    '''
+    causes dijkstra to prefer paths containing empty bases
+    '''
+    if is_base(node) and node.units is 0:
+      return 9
+    return 10
+  
+  empty_nodes = filter(lambda x: x.owner is None, nodes)
+  enemy_nodes = filter(lambda x: is_enemy_node(x), nodes)
+  empty_bases = filter(lambda x: is_base(x), empty_nodes)
+  enemy_bases = filter(lambda x: is_base(x), enemy_nodes)
+  
+  bases = []
+  for base in filter(lambda n: is_base(n), nodes):
+    (mydistance, mynodes) = game.m.find(base, lambda x: is_my_node(x) and
+        x.units > 0)
+    (hisdistance, hisnodes) = game.m.find(base, lambda x: is_enemy_node(x) and
+        x.units > 0)
+    myunits = 0
+    hisunits = 0
+    if mynodes:
+      myunits = reduce(lambda x, y: x.units + y.units, mynodes)
+    if hisnodes:
+      hisunits = reduce(lambda x, y: x.units + y.units, hisnodes)
+    bases.append(mydistance, myunits, hisdistance, hisunits, base.id)
+  print bases
+
+# vim: set sw=2 ts=2 sts=2 et:
+
