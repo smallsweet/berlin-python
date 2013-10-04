@@ -83,14 +83,19 @@ class Map:
         fringe.add(neighbour)
     return result
 
-  def dijkstra(self, startnode, evalfunc):
+  def dijkstra(self, startnode, evalfunc, costfunc=None):
     '''
     returns shortest path between startnode and the closest node for which
     evalfunc returns true. If there are multiple paths of equal length, it 
     will just return one of them.
     path will be an ordered list of nodes that must be visited (not including
-    start), or None if no path exists
+    startnode), or None if no path exists
+    optional costfunc should return the cost for visiting a given node, it can
+    be useful to cause the pathfinding to prefer/avoid certain routes.
     '''
+    if costfunc is None:
+      # default cost is 1
+      costfunc = lambda x: 1
     path = []
     visited = set()
     fringe = []
@@ -114,30 +119,69 @@ class Map:
         if n in visited:
           #print "already been there"
           continue
+        # make the pathfinder favour paths that contain empty bases
+        cost = costfunc(self.nodes[n])
         found_in_fringe = False
         # search for the node in the fringe
         # since we know it's unique use a for loop so we can stop as soon
         # as we find it
-        # this part we could skip I think, because in these maps all
-        # edges are the same length
         #print "looking in fringe"
         for i in range(len(fringe)):
           (elemdist, element) = fringe[i]
           if element == n:
             found_in_fringe = True
             #print "found in fringe"
-            if elemdist > curdist + 1:
-              elemdist = curdist + 1
+            if elemdist > curdist + cost:
+              elemdist = curdist + cost
               fringe[i] = (elemdist, element)
               fringe.sort()
               parent[n] = current
               break
         if not found_in_fringe:
           #print "adding to fringe", n
-          heapq.heappush(fringe, (curdist + 1, n))
+          heapq.heappush(fringe, (curdist + cost, n))
           parent[n] = current
     # if we get here, there's no path
     return None
+
+  def find(self, startnode, evalfunc):
+    '''
+    A breadth first search that will find the closest node that satisfies
+    the condition. Will find multiple nodes if they are at the same
+    distance.
+    Returns a tuple containing the distance and the list of nodes.
+    If no matching node is found will return (None, [])
+    '''
+    maxdist = None
+    visited = set()
+    found = []
+    fringe = []
+    heapq.heappush(fringe, (0, startnode.id))
+    while len(fringe) > 0:
+      (curdist, current) = heapq.heappop(fringe)
+      visited.add(current)
+      #if curdist > 0 and evalfunc(self.nodes[current]):
+      if evalfunc(self.nodes[current]):
+        # found node
+        if maxdist is None:
+          maxdist = curdist
+        if curdist > maxdist:
+          continue
+        found.append(self.nodes[current])
+      if maxdist is not None and (curdist + 1) > maxdist:
+        # gone too far, skip it
+        continue
+      for n in self.nodes[current].edges:
+        if n in visited:
+          continue
+        found_in_fringe = False
+        for (elemdist, element) in fringe:
+          if element == n:
+            found_in_fringe = True
+            break
+        if not found_in_fringe:
+          heapq.heappush(fringe, (curdist + 1, n))
+    return (maxdist, found)
 
 class Game:
   def __init__(self, parsed_request):
@@ -224,8 +268,8 @@ def test():
   import json
   import urlparse
   request = {}
-  for key, value in \
-      urlparse.parse_qs(file('tests/test4.urlencoded','r').read()).items():
+  for key, value in urlparse.parse_qs(\
+      file('tests/test4.urlencoded','r').read()).items():
         # this a silly hack
         if key == 'action':
           request['action'] = value[0]
@@ -238,19 +282,38 @@ def test():
   print sorted(l)
   l = g.m.dijkstra(n, lambda x: x.id == 17 )
   print l
-  l = g.m.dijkstra(n, lambda x: x.id == 22 )
+  l = g.m.dijkstra(g.m.nodes[28], lambda x: x.id == 5)
   print l
+
   t0 = time.time()
   for i in range(10000):
     l = g.m.dijkstra(n, lambda x: x.id == 28 )
-  print l
+  print "should find a path 5 nodes long", l
   print "dijkstra 10000 times: %s" % (time.time() - t0)
   for step in l:
     print "%d, %s" % (step, g.m.nodes[step].edges)
 
+  # same, but avoid node 25
+  def avoid_node_25(node):
+    if node.id is 25:
+      return 11
+    return 10
+  l = g.m.dijkstra(n, lambda x: x.id == 28, avoid_node_25)
+  print "should avoid 25", l
+
+  def is_base(node):
+    return node.units_per_turn > 0
+
+  print "search"
+  s = g.m.find(n, is_base)
+  print "should find 4 and 6 at distance 2", s
+
+  s = g.m.find(g.m.nodes[1], lambda x: x.owner == 1)
+  print "should find 4 at distance 5", s
+
+
 if __name__ == '__main__':
   main()
-
 
 # vim: set sw=2 ts=2 sts=2 et:
 
