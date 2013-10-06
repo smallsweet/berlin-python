@@ -167,6 +167,8 @@ class Map:
           maxdist = curdist
         if curdist > maxdist:
           continue
+        # FIXME ? return ids or nodes ?
+        # found.append(current)
         found.append(self.nodes[current])
       if maxdist is not None and (curdist + 1) > maxdist:
         # gone too far, skip it
@@ -182,6 +184,39 @@ class Map:
         if not found_in_fringe:
           heapq.heappush(fringe, (curdist + 1, n))
     return (maxdist, found)
+  
+  def radius(self, startnode, maxdist, dofunc=None):
+    '''
+    Grow from startnode until maxdistance.
+    Returns list of visited nodes.
+    Optionally apply dofunc to each node encountered
+    '''
+    visited = set()
+    fringe = []
+    heapq.heappush(fringe, (0, startnode.id))
+    while len(fringe) > 0:
+      (curdist, current) = heapq.heappop(fringe)
+      visited.add(current)
+      #if curdist > 0 and evalfunc(self.nodes[current]):
+      if dofunc is not None:
+        dofunc(self.nodes[current])
+      if (curdist + 1) > maxdist:
+        # gone too far, do not enter edges
+        continue
+      for n in self.nodes[current].edges:
+        if n in visited:
+          continue
+        found_in_fringe = False
+        for (elemdist, element) in fringe:
+          if element == n:
+            found_in_fringe = True
+            break
+        if not found_in_fringe:
+          heapq.heappush(fringe, (curdist + 1, n))
+    v = []
+    for n in visited:
+      v.append(self.nodes[n])
+    return v
 
 class Game:
   def __init__(self, parsed_request):
@@ -210,7 +245,8 @@ class Game:
     '''
     do something here
     '''
-    return ai.search_and_destroy(self)
+    #return ai.search_and_destroy(self)
+    return ai.another_bot(self)
 
 class Response:
   def __init__(self):
@@ -310,7 +346,6 @@ def test():
 
   s = g.m.find(g.m.nodes[1], lambda x: x.owner == 1)
   print "should find 4 at distance 5", s
-
 
 if __name__ == '__main__':
   main()
