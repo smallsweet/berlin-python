@@ -3,6 +3,7 @@
 import logging
 import heapq
 import random
+import time
 
 import berlin
 
@@ -33,6 +34,7 @@ def search_and_destroy(game):
   '''
   go for bases
   '''
+  t0 = time.time()
   res = berlin.Response()
   me = game.myself
   nodes = game.m.nodes.values()
@@ -92,6 +94,7 @@ def search_and_destroy(game):
         defenders = 1
     res.add_move(n.id, destination, n.units - defenders) 
   logging.info(res)
+  logging.info("search_and_destroy done in %f" % (time.time() - t0))
   return res
 
 class Target:
@@ -113,6 +116,7 @@ def another_bot(game):
   '''
   work in progress
   '''
+  t0 = time.time()
   res = berlin.Response()
   me = game.myself
   nodes = game.m.nodes.values()
@@ -203,27 +207,29 @@ def another_bot(game):
         mymaxunits, hismaxunits, map(lambda x: x.id, mynodes)
     if game.m.nodes[base_id].owner is None:
       # empty bases
-      if distdelta > 0:
-        # only send one guy if we can get there first
-        t = Target(abs(distdelta), base_id, mynodes, None, 1)
+      if distdelta == 0:
+        t = Target(mydist, base_id, mynodes)
         print t
         heapq.heappush(targets,(t.prio,t))
-      elif distdelta == 0:
-        t = Target(abs(distdelta), base_id, mynodes)
+      elif distdelta > 0:
+        # only send one guy if we can get there first
+        t = Target(distdelta -1, base_id, mynodes, None, 1)
         print t
         heapq.heappush(targets,(t.prio,t))
       continue
     elif is_my_node(game.m.nodes[base_id]):
-      # defend my bases if he can take the base if we do nothing
-      needed = hisunits + 1
-      t = Target((hisdist - 1) * 2, base_id, None, needed, needed)
-      print "defend base at", base_id, "hisdist:", hisdist
-      print t
-      heapq.heappush(targets,(t.prio, t))
-      continue
+      # defend my bases if he can take the base unless we do nothing
+      if hisdist == 1 and hisunits <= mymaxunits:
+        print "defend base at", base_id, "hisdist:", hisdist
+        needed = hisunits
+        t = Target(0 , base_id, None, needed, needed)
+        print t
+        heapq.heappush(targets,(t.prio, t))
+        continue
     elif is_enemy_node(game.m.nodes[base_id]):
       # conquer
-      t = Target(mydist + abs(hisunits - myunits), base_id)
+      prio = mydist +1
+      t = Target(prio, base_id, None, None, hismaxunits +1)
       print t
       heapq.heappush(targets, (t.prio, t))
   
@@ -258,7 +264,8 @@ def another_bot(game):
         break
     path = [dest]
     if orig != dest:
-      path = game.m.dijkstra(game.m.nodes[orig], lambda x: x.id == dest, prefer_empty_bases)
+      path = game.m.dijkstra(game.m.nodes[orig],
+          lambda x: x.id == dest, prefer_empty_bases)
       print path
       if not path:
         print "ERROR no path found from %d to %d" % (orig, dest)
@@ -290,6 +297,24 @@ def another_bot(game):
     heapq.heappush(targets,(t.prio,t))
     print targets
 
+  print "free_units", free_units
+  print "free_nodes", free_nodes
+  # if we still have free stuff, move it towards closest enemy (base if any)
+  for (orig,units) in free_nodes.items():
+    path = game.m.dijkstra(game.m.nodes[orig],
+        lambda x: is_enemy_node(x) and is_base(x), prefer_empty_bases)
+    if not path:
+      path = game.m.dijkstra(game.m.nodes[orig],
+          lambda x: is_enemy_node(x), prefer_empty_bases)
+    if path:
+      dest = path[0]
+      print "sending %d free guys from %d to %d" % (units, orig, dest) 
+      if orig not in orders:
+        orders[orig] = {}
+      if dest not in orders[orig]:
+        orders[orig][dest] = 0
+      orders[orig][dest] += units
+
   print orders
   # dispatch orders
   for orig in orders:
@@ -297,6 +322,8 @@ def another_bot(game):
       if dest == orig:
         continue
       res.add_move(orig, dest, orders[orig][dest])
+  print res
+  print "another bot done in %f" % (time.time() - t0)
   return res
 
 # vim: set sw=2 ts=2 sts=2 et:

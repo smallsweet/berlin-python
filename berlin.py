@@ -245,8 +245,7 @@ class Game:
     '''
     do something here
     '''
-    #return ai.search_and_destroy(self)
-    return ai.another_bot(self)
+    return ai.move_at_random(self)
 
 class Response:
   def __init__(self):
