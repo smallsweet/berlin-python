@@ -38,7 +38,9 @@ def search_and_destroy(game):
   res = berlin.Response()
   me = game.myself
   nodes = game.m.nodes.values()
-  logging.info("I am %s" % me)
+  logging.info("turn %d started, %d turns left" % \
+      (game.turn, game.turn - game.maxturns))
+  logging.info("my id is %s" % me)
   for n in nodes:
     logging.info(n)
 
@@ -65,7 +67,7 @@ def search_and_destroy(game):
   empty_bases = filter(lambda x: is_base(x), empty_nodes)
   enemy_bases = filter(lambda x: is_base(x), enemy_nodes)
   if not enemy_bases and not empty_bases:
-    print "move around at random"
+    logging.info("move around at random")
     return move_at_random(game)
 
   for n in filter(lambda x: is_my_node(x) and x.units > 0, nodes):
@@ -120,7 +122,9 @@ def another_bot(game):
   res = berlin.Response()
   me = game.myself
   nodes = game.m.nodes.values()
-  logging.info("I am %s" % me)
+  logging.info("turn %d started, %d turns left" % \
+      (game.turn, game.maxturns - game.turn + 1))
+  logging.info("my id is %s" % me)
   for n in nodes:
     logging.info(n)
 
@@ -148,7 +152,7 @@ def another_bot(game):
   enemy_bases = filter(lambda x: is_base(x), enemy_nodes)
   enemy_units_nodes = filter(lambda x: x.units > 0, enemy_nodes)
   if not enemy_units_nodes:
-    print "move around at random"
+    logging.info("move around at random")
     return move_at_random(game)
   
   # muster available forces
@@ -163,27 +167,42 @@ def another_bot(game):
   objectives = []
   targets = [] # targets
   for base in filter(lambda x: is_base(x), nodes):
-    #print "base: ", base
+    #logging.info("base: ", base)
     (mydistance, mynodes) = game.m.find(base, lambda x: is_my_node(x) and
         x.units > 0)
-    print "found my guys", mydistance, mynodes
+    logging.debug("found my guys, distance: %s, nodes: %s" \
+        % (mydistance, mynodes))
     (hisdistance, hisnodes) = game.m.find(base, lambda x: is_enemy_node(x) and
         x.units > 0)
-    print "found his guys", hisdistance, hisnodes
+    logging.debug("found his guys, distance: %s, nodes %s"\
+        % (hisdistance, hisnodes))
+    players = {}
     hismaxunits=0
     for n in game.m.radius(base, mydistance):
-      # bool counts as int in python
-      hismaxunits += is_enemy_node(n) * n.units
+      if is_enemy_node(n):
+        p = n.owner
+        if p not in players:
+          players[p] = 0
+        players[p] += n.units
+    if players:
+      hismaxunits = max(players.values())
     mymaxunits=0
     for n in game.m.radius(base, hisdistance):
       # bool counts as int in python
       mymaxunits += is_my_node(n) * n.units
     myunits = 0
-    hisunits = 0
     for n in mynodes:
       myunits += n.units
+    hisunits = 0
+    players = {}
     for n in hisnodes:
-      hisunits += n.units
+      if is_enemy_node(n):
+        p = n.owner
+        if p not in players:
+          players[p] = 0
+        players[p] += n.units
+    if players:
+      hisunits = max(players.values())
     objectives.append((base.id, hisdistance - mydistance,
       mydistance, hisdistance, myunits, hisunits,
       mymaxunits, hismaxunits, mynodes))
@@ -198,59 +217,59 @@ def another_bot(game):
 
   # prioritize objectives
   objectives.sort(cmp=sort_by_eta_distance)
-  print objectives
+  logging.debug(objectives)
 
   for o in objectives:
     (base_id, distdelta, mydist, hisdist, myunits, hisunits,
         mymaxunits, hismaxunits, mynodes) = o
-    print base_id, distdelta, mydist, hisdist, myunits, hisunits, \
-        mymaxunits, hismaxunits, map(lambda x: x.id, mynodes)
+    logging.debug((base_id, distdelta, mydist, hisdist, myunits, hisunits, \
+        mymaxunits, hismaxunits, map(lambda x: x.id, mynodes)))
     if game.m.nodes[base_id].owner is None:
       # empty bases
       if distdelta == 0:
-        t = Target(mydist, base_id, mynodes)
-        print t
+        #t = Target(mydist, base_id, mynodes)
+        t = Target(distdelta, base_id, mynodes, None, hisunits +1)
+        logging.debug(t)
         heapq.heappush(targets,(t.prio,t))
       elif distdelta > 0:
         # only send one guy if we can get there first
         t = Target(distdelta -1, base_id, mynodes, None, 1)
-        print t
+        logging.debug(t)
         heapq.heappush(targets,(t.prio,t))
       continue
     elif is_my_node(game.m.nodes[base_id]):
-      # defend my bases if he can take the base unless we do nothing
+      # defend our bases unless he can take them whatever we do
       if hisdist == 1 and hisunits <= mymaxunits:
-        print "defend base at", base_id, "hisdist:", hisdist
+        logging.debug("defend base at %s, hisdist: %s" %(base_id, hisdist))
         needed = hisunits
         t = Target(0 , base_id, None, needed, needed)
-        print t
+        logging.debug(t)
         heapq.heappush(targets,(t.prio, t))
         continue
     elif is_enemy_node(game.m.nodes[base_id]):
       # conquer
       prio = mydist +1
-      t = Target(prio, base_id, None, None, hismaxunits +1)
-      print t
+      t = Target(prio, base_id, None, hisunits +1, hismaxunits +1)
+      logging.debug(t)
       heapq.heappush(targets, (t.prio, t))
   
   targets.sort()
-  print "targets", targets
+  logging.debug("targets %s" % targets)
   orders = {}
   # create orders
-  print "creating orders"
+  logging.info("creating orders")
   while free_units > 0 and len(targets) > 0:
     (prio, t) = heapq.heappop(targets)
-    print "free_units", free_units
-    print t
+    logging.debug("free_units %s" % free_units)
+    logging.info("target: %s" % t)
     dest = t.dest
     units_min = t.units_min
     units = 0
-    sources = t.orig
+    sources = filter(lambda x: x.id in free_nodes, t.orig)
     if not sources:
-      (dist, sources) = game.m.find(game.m.nodes[dest], lambda x: x.id in free_nodes)
-    # filter again because might have been predeclared
-    print sources
-    sources = filter(lambda x: x.id in free_nodes, sources)
+      (dist, sources) = game.m.find(game.m.nodes[dest],
+          lambda x: x.id in free_nodes)
+    logging.debug("available sources: %s" % sources)
     if not sources:
       # noone left to send, pity
       continue
@@ -262,43 +281,46 @@ def another_bot(game):
       if free_nodes[orig] <= 0:
         del free_nodes[orig]
         break
-    path = [dest]
+    path = [orig]
     if orig != dest:
       path = game.m.dijkstra(game.m.nodes[orig],
           lambda x: x.id == dest, prefer_empty_bases)
-      print path
+      logging.debug(path)
       if not path:
-        print "ERROR no path found from %d to %d" % (orig, dest)
+        logging.error("ERROR no path found from %d to %d" % (orig, dest))
         continue
     dest = path[0]
     if orig not in orders:
       orders[orig] = {}
     if dest not in orders[orig]:
       orders[orig][dest] = 0
-    print "sending %d guys from %d to %d" % (units, orig, dest)
+    logging.info("sending %d guys from %d to %d" % (units, orig, dest))
     orders[orig][dest] += units
     if t.units_min is not None:
       if units < t.units_min:
-        t.prio += 1
+        # do not decrease priority
+        #t.prio += 1
         t.units_min -= units 
-        print "requested %d units, order not fulfilled, reenque" % (t.units_min)
-        print t
+        logging.info("requested %d more units, order not fulfilled, reenqued"\
+            % (t.units_min))
+        logging.debug(t)
         heapq.heappush(targets,(t.prio,t))
-        print targets
+        logging.debug(targets)
         continue
     if t.units_max is not None:
       if units >= t.units_max:
-        print "order fulfilled"
+        logging.info("order fulfilled")
         continue
       t.units_max -= units
     t.prio += 1
-    print "sent 1 guy from %d to %d, open order, reenque" % (orig, dest)
-    print t
+    logging.debug(t)
     heapq.heappush(targets,(t.prio,t))
-    print targets
+    logging.info("open order, reenqued with lower priority")
+    logging.debug(targets)
 
-  print "free_units", free_units
-  print "free_nodes", free_nodes
+  logging.info("unfulfilled targets: %s" % len(targets))
+  logging.info("free_units: %s" % free_units)
+  logging.debug("free_nodes: %s" % free_nodes)
   # if we still have free stuff, move it towards closest enemy (base if any)
   for (orig,units) in free_nodes.items():
     path = game.m.dijkstra(game.m.nodes[orig],
@@ -308,22 +330,23 @@ def another_bot(game):
           lambda x: is_enemy_node(x), prefer_empty_bases)
     if path:
       dest = path[0]
-      print "sending %d free guys from %d to %d" % (units, orig, dest) 
+      logging.info("sending %d free guys from %d to %d" % (units, orig, dest) )
       if orig not in orders:
         orders[orig] = {}
       if dest not in orders[orig]:
         orders[orig][dest] = 0
       orders[orig][dest] += units
 
-  print orders
+  logging.debug(orders)
   # dispatch orders
   for orig in orders:
     for dest in orders[orig]:
       if dest == orig:
         continue
       res.add_move(orig, dest, orders[orig][dest])
-  print res
-  print "another bot done in %f" % (time.time() - t0)
+  logging.debug(res)
+  logging.info("turn %d end" % game.turn)
+  logging.info("bot done in %f" % (time.time() - t0))
   return res
 
 # vim: set sw=2 ts=2 sts=2 et:
