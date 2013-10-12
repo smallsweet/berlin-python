@@ -146,12 +146,13 @@ def another_bot(game):
       return 9
     return 10
   
-  empty_nodes = filter(lambda x: x.owner is None, nodes)
+  #empty_nodes = filter(lambda x: x.owner is None, nodes)
   enemy_nodes = filter(lambda x: is_enemy_node(x), nodes)
-  empty_bases = filter(lambda x: is_base(x), empty_nodes)
-  enemy_bases = filter(lambda x: is_base(x), enemy_nodes)
-  enemy_units_nodes = filter(lambda x: x.units > 0, enemy_nodes)
-  if not enemy_units_nodes:
+  #empty_bases = filter(lambda x: is_base(x), empty_nodes)
+  #enemy_bases = filter(lambda x: is_base(x), enemy_nodes)
+
+  # if there are no enemy units left following calculations fail
+  if len(filter(lambda x: x.units > 0, enemy_nodes)) == 0:
     logging.info("move around at random")
     return move_at_random(game)
   
@@ -165,7 +166,6 @@ def another_bot(game):
 
   # create objectives
   objectives = []
-  targets = [] # targets
   for base in filter(lambda x: is_base(x), nodes):
     #logging.info("base: ", base)
     (mydistance, mynodes) = game.m.find(base, lambda x: is_my_node(x) and
@@ -205,25 +205,14 @@ def another_bot(game):
       hisunits = max(players.values())
     objectives.append((base.id, hisdistance - mydistance,
       mydistance, hisdistance, myunits, hisunits,
-      mymaxunits, hismaxunits, mynodes))
+      mymaxunits, hismaxunits, mynodes, base))
   
-  def sort_by_eta_distance(a, b):
-    '''
-    sort by eta and then by distance
-    '''
-    if a[2] == b[2]:
-      return abs(a[1]) < abs(b[1])
-    return a[2] < b[2]
-
-  # prioritize objectives
-  objectives.sort(cmp=sort_by_eta_distance)
-  logging.debug(objectives)
-
+  targets = []
   for o in objectives:
     (base_id, distdelta, mydist, hisdist, myunits, hisunits,
-        mymaxunits, hismaxunits, mynodes) = o
+        mymaxunits, hismaxunits, mynodes, base) = o
     logging.debug((base_id, distdelta, mydist, hisdist, myunits, hisunits, \
-        mymaxunits, hismaxunits, map(lambda x: x.id, mynodes)))
+        mymaxunits, hismaxunits, map(lambda x: x.id, mynodes), base))
     if game.m.nodes[base_id].owner is None:
       # empty bases
       if distdelta == 0:

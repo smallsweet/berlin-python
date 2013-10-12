@@ -241,6 +241,7 @@ class Game:
         % (self.action, self.game_id, self.maxturns, self.turn, self.players,
             self.myself, self.timeout, self.m)
 
+
   def generate_turn(self):
     '''
     do something here
@@ -269,6 +270,78 @@ def parse_request(request):
     logging.exception('failed to parse request')
     return None
   return game
+
+class Match:
+  def __init__(self, game):
+    self.game = game
+    self.players = game.players
+    self.responses = [None] * self.players
+    self.nodes = {}
+    self.sync()
+
+  def sync(self):
+    for n in self.game.m.nodes.values():
+      self.nodes = {}
+      self.nodes[n.id] = [0] * self.players
+      self.nodes[n.id][n.owner] = n.units
+    
+  def add_response(self, player_id, response):
+    self.responses[player_id] = response
+
+  def resolve_movement(self):
+    self.sync() # necessary ?
+    for player_id in range(self.players):
+      r = self.responses[player_id]
+      if r is None:
+        logging.info("skipping missing move for player: %s" % player_id)
+        continue
+      for move in r:
+        orig = self.game.m.nodes[r['from']]
+        dest = self.game.m.nodes[r['destination']]
+        units = r['number_of_soldiers']
+        if orig.owner is not player_id or orig.units < units:
+          logging.info("ignoring invalid move from player: %s" % player_id)
+          continue
+        self.nodes[orig.id][player_id] -= units
+        self.nodes[dest.id][player_id] += units
+
+  def resolve_combat(self):
+    for (nodeid, nodeunits) in self.nodes.items():
+      topplayer = (None, 0)
+      secondplayer = (None, 0)
+      for i in range(len(nodeunits)):
+        units = nodeunits[i]
+        if units > topplayer[1]:
+          secondplayer = topplayer
+          topplayer = (i, units)
+          continue # next player
+        if units > secondplayer[1]:
+          secondplayer = (i,units)
+      units_left = topplayer[1] - secondplayer[1]
+      if units_left == 0:
+        continue # next node
+      node = self.game.m.nodes[nodeid]
+      node.units = units_left
+      if topplayer[0] != node.owner:
+        node.owner = topplayer[0]
+
+  def resolve_spawn(self):
+    for node in self.game.m.nodes.values():
+      if node.owner is None:
+        continue
+      node.units += node.units_per_turn
+      node.units = max(node.units,0) # units cannot be negative
+
+  def resolve_turn(self):
+    self.resolve_movement()
+    self.resolve_combat()
+    self.resolve_spawn()
+    self.game.turn += 1
+    if self.game.turn < self.game.maxturns:
+      return True
+    self.game.turn = self.game.maxturns
+    self.game.action = 'game_over'
+    return False
 
 def move_at_random(game):
   '''
