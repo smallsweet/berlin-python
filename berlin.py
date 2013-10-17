@@ -241,7 +241,6 @@ class Game:
         % (self.action, self.game_id, self.maxturns, self.turn, self.players,
             self.myself, self.timeout, self.m)
 
-
   def generate_turn(self):
     '''
     do something here

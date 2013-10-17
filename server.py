@@ -67,14 +67,17 @@ class FatCat(tornado.web.RequestHandler):
     self.write("berlin API, send POST please")
   def post(self):
     body = self.request.body
-    logging.debug("received POST: " + body)
+    catlog = logging.getLogger('fatcat')
+    catlog.info("received POST")
+    catlog.debug(str(body))
     request = {
         'action': self.get_argument('action'),
         'infos': json.loads(self.get_argument('infos')),
         'map': json.loads(self.get_argument('map')),
         'state': json.loads(self.get_argument('state'))
         }
-    logging.debug("decoded request: " + str(request))
+    catlog.info("decoded request")
+    catlog.debug(str(request))
     g = berlin.parse_request(request)
     if g is None:
       self.set_status(500, 'could not parse request')
@@ -82,7 +85,8 @@ class FatCat(tornado.web.RequestHandler):
     if g.action in ['ping', 'turn']:
       # do something useful here
       response = ai.another_bot(g)
-      logging.debug("response: " + str(response))
+      catlog.info("sending response")
+      catlog.debug(str(response))
       self.write(str(response))
       self.flush()
       return
@@ -91,13 +95,17 @@ class FatCat(tornado.web.RequestHandler):
 
 FORMAT = '%(asctime)s %(levelname)s %(message)s'
 logging.basicConfig(format=FORMAT, level=logging.DEBUG)
-#logging.basicConfig(format=FORMAT, level=logging.INFO)
+#logging.basicConfig(format=FORMAT, level=logging.INFO, filename='berlin.log')
+catlog = logging.getLogger('fatcat')
+catfh = logging.FileHandler('fatcat-req.log')
+catfh.setLevel(logging.DEBUG)
+catfh.setFormatter(logging.Formatter(FORMAT))
+catlog.addHandler(catfh)
 
 application = tornado.web.Application([
   (r"/searchdestroy", SearchAndDestroy),
   (r"/fatcat", FatCat),
   (r"/randombot", MainHandler), ])
-
 
 if __name__ == "__main__":
   print "loaded berlin module %s" % berlin.version

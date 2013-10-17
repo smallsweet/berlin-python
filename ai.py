@@ -39,7 +39,7 @@ def search_and_destroy(game):
   me = game.myself
   nodes = game.m.nodes.values()
   logging.info("turn %d started, %d turns left" % \
-      (game.turn, game.turn - game.maxturns))
+      (game.turn, game.maxturns - game.turn))
   logging.info("my id is %s" % me)
   for n in nodes:
     logging.info(n)
@@ -123,7 +123,7 @@ def another_bot(game):
   me = game.myself
   nodes = game.m.nodes.values()
   logging.info("turn %d started, %d turns left" % \
-      (game.turn, game.maxturns - game.turn + 1))
+      (game.turn, game.maxturns - game.turn))
   logging.info("my id is %s" % me)
   for n in nodes:
     logging.info(n)
@@ -133,10 +133,16 @@ def another_bot(game):
     return node.units_per_turn > 0
   
   def is_my_node(node):
-    return node.owner is me 
+    return node.owner == me 
+  
+  def is_my_base(node):
+    return node.owner == me and node.units_per_turn > 0
   
   def is_enemy_node(node):
-    return node.owner is not None and node.owner is not me 
+    return node.owner is not None and node.owner != me 
+  
+  def is_enemy_base(node):
+    return is_enemy_node(node) and node.units_per_turn > 0
   
   def prefer_empty_bases(node):
     '''
@@ -170,12 +176,12 @@ def another_bot(game):
     #logging.info("base: ", base)
     (mydistance, mynodes) = game.m.find(base, lambda x: is_my_node(x) and
         x.units > 0)
-    logging.debug("found my guys, distance: %s, nodes: %s" \
-        % (mydistance, mynodes))
+    logging.debug("base %d: found my guys, distance: %s, nodes: %s" \
+        % (base.id, mydistance, mynodes))
     (hisdistance, hisnodes) = game.m.find(base, lambda x: is_enemy_node(x) and
         x.units > 0)
-    logging.debug("found his guys, distance: %s, nodes %s"\
-        % (hisdistance, hisnodes))
+    logging.debug("base %d: found his guys, distance: %s, nodes %s"\
+        % (base.id, hisdistance, hisnodes))
     players = {}
     hismaxunits=0
     for n in game.m.radius(base, mydistance):
@@ -208,16 +214,20 @@ def another_bot(game):
       mymaxunits, hismaxunits, mynodes, base))
   
   targets = []
+  logging.info("prioritizing targets")
+  logging.debug(("base_id", "distdelta", "mydist", "hisdist",
+    "myunits", "hisunits", "mymaxunits", "hismaxunits", "mynodes", "objective"))
   for o in objectives:
     (base_id, distdelta, mydist, hisdist, myunits, hisunits,
         mymaxunits, hismaxunits, mynodes, base) = o
     logging.debug((base_id, distdelta, mydist, hisdist, myunits, hisunits, \
         mymaxunits, hismaxunits, map(lambda x: x.id, mynodes), base))
-    if game.m.nodes[base_id].owner is None:
+    if base.owner is None:
       # empty bases
       if distdelta == 0:
         #t = Target(mydist, base_id, mynodes)
-        t = Target(distdelta, base_id, mynodes, None, hisunits +1)
+        # FIXME: increase priority ?
+        t = Target(-1, base_id, mynodes, 1, hisunits + 1)
         logging.debug(t)
         heapq.heappush(targets,(t.prio,t))
       elif distdelta > 0:
@@ -226,7 +236,7 @@ def another_bot(game):
         logging.debug(t)
         heapq.heappush(targets,(t.prio,t))
       continue
-    elif is_my_node(game.m.nodes[base_id]):
+    elif is_my_node(base):
       # defend our bases unless he can take them whatever we do
       if hisdist == 1 and hisunits <= mymaxunits:
         logging.debug("defend base at %s, hisdist: %s" %(base_id, hisdist))
@@ -235,7 +245,35 @@ def another_bot(game):
         logging.debug(t)
         heapq.heappush(targets,(t.prio, t))
         continue
-    elif is_enemy_node(game.m.nodes[base_id]):
+    elif is_enemy_node(base):
+      if myunits > hismaxunits:
+        # if local advantage
+        adjnodes = game.m.radius(base, 1)
+        mybases = filter(lambda n: is_my_node(n), adjnodes)
+        hisbases = filter(lambda n: n.owner == base.owner, adjnodes)
+        if len(mybases) > len(hisbases) or\
+            len(mybases) == len(hisbases) and\
+            len(mybases) > 0 and myunits/len(mybases) > hismaxunits:
+          # find best base to exchange
+          reinforcements = []
+          for mybase in mybases:
+              fbases = filter(lambda x: is_my_node(x), game.m.radius(mybase, 1))
+              units = sum(map(lambda x: x.units, fbases))
+              reinforcements.append((len(fbases), units, mybase))
+          reinforcements.sort()
+          logging.debug(reinforcements)
+          selected = None
+          while len(reinforcements) > 0: 
+            selected = reinforcements.pop()[2]
+            if selected.units >= base.units + 1:
+              break
+          if selected is not None:
+            logging.debug("exchange base at %s for my base at %s" % \
+                (base_id, selected))
+            units_to_send = min(selected.units, base.units + 1)
+            t = Target(-1, base_id, [selected], units_to_send, units_to_send)
+            heapq.heappush(targets, (t.prio, t))
+            continue
       # conquer
       prio = mydist +1
       t = Target(prio, base_id, None, hisunits +1, hismaxunits +1)
@@ -253,6 +291,8 @@ def another_bot(game):
     logging.info("target: %s" % t)
     dest = t.dest
     units_min = t.units_min
+    if units_min is None:
+      units_min = 1
     units = 0
     sources = filter(lambda x: x.id in free_nodes, t.orig)
     if not sources:
@@ -285,17 +325,23 @@ def another_bot(game):
       orders[orig][dest] = 0
     logging.info("sending %d guys from %d to %d" % (units, orig, dest))
     orders[orig][dest] += units
+    # reenqueue
     if t.units_min is not None:
       if units < t.units_min:
-        # do not decrease priority
+        # do not decrease priority for min orders
         #t.prio += 1
         t.units_min -= units 
+        if t.units_max is not None:
+          t.units_max -= units 
         logging.info("requested %d more units, order not fulfilled, reenqued"\
             % (t.units_min))
         logging.debug(t)
         heapq.heappush(targets,(t.prio,t))
-        logging.debug(targets)
         continue
+      # remove min property
+      t.units_min = None
+      logging.info("min order fulfilled, removing min property")
+      logging.info(t)
     if t.units_max is not None:
       if units >= t.units_max:
         logging.info("order fulfilled")
@@ -305,6 +351,7 @@ def another_bot(game):
     logging.debug(t)
     heapq.heappush(targets,(t.prio,t))
     logging.info("open order, reenqued with lower priority")
+    logging.info("targets remaining:")
     logging.debug(targets)
 
   logging.info("unfulfilled targets: %s" % len(targets))
@@ -326,13 +373,16 @@ def another_bot(game):
         orders[orig][dest] = 0
       orders[orig][dest] += units
 
-  logging.debug(orders)
+  logging.debug("orders:")
   # dispatch orders
   for orig in orders:
     for dest in orders[orig]:
       if dest == orig:
+        logging.debug("defending %d with %d units" % (orig, orders[orig][dest]))
         continue
+      logging.debug("%d -> %d %d units" % (orig, dest, orders[orig][dest]))
       res.add_move(orig, dest, orders[orig][dest])
+  logging.debug("response:")
   logging.debug(res)
   logging.info("turn %d end" % game.turn)
   logging.info("bot done in %f" % (time.time() - t0))
