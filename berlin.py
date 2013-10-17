@@ -258,7 +258,7 @@ class Response:
       'number_of_soldiers': units })
 
   def __repr__(self):
-    return json.dumps(self.moves)
+    return 'Response: %s' % json.dumps(self.moves)
 
 def parse_request(request):
   logging.debug('received request: ' + str(request))
@@ -279,9 +279,11 @@ class Match:
     self.sync()
 
   def sync(self):
+    self.nodes = {}
     for n in self.game.m.nodes.values():
-      self.nodes = {}
       self.nodes[n.id] = [0] * self.players
+      if n.owner is None:
+        continue
       self.nodes[n.id][n.owner] = n.units
     
   def add_response(self, player_id, response):
@@ -290,17 +292,18 @@ class Match:
   def resolve_movement(self):
     self.sync() # necessary ?
     for player_id in range(self.players):
-      r = self.responses[player_id]
-      if r is None:
+      resp = self.responses[player_id]
+      if resp is None:
         logging.info("skipping missing move for player: %s" % player_id)
         continue
-      for move in r:
-        orig = self.game.m.nodes[r['from']]
-        dest = self.game.m.nodes[r['destination']]
-        units = r['number_of_soldiers']
+      for move in resp.moves:
+        orig = self.game.m.nodes[move['from']]
+        dest = self.game.m.nodes[move['to']]
+        units = move['number_of_soldiers']
         if orig.owner is not player_id or orig.units < units:
           logging.info("ignoring invalid move from player: %s" % player_id)
           continue
+        self.game.m.nodes[orig.id].units -= units
         self.nodes[orig.id][player_id] -= units
         self.nodes[dest.id][player_id] += units
 
@@ -331,6 +334,11 @@ class Match:
       node.units += node.units_per_turn
       node.units = max(node.units,0) # units cannot be negative
 
+  def show(self):
+    for nid,node in self.game.m.nodes.items():
+  		print node.id,(node.owner and 'B' or 'A')*node.units
+
+
   def resolve_turn(self):
     self.resolve_movement()
     self.resolve_combat()
@@ -341,6 +349,20 @@ class Match:
     self.game.turn = self.game.maxturns
     self.game.action = 'game_over'
     return False
+
+  def score(self):
+    scores = [0] * self.players
+    units = [0] * self.players
+    for node in self.game.m.nodes.values():
+      if node.owner is not None:
+        scores[node.owner] += node.points
+        units[node.owner] += node.units
+    # FIXME this is horrrrrible
+    return (scores,units)
+
+  def send_game(self,playerid):
+    self.game.myself = playerid
+    return self.game
 
 def move_at_random(game):
   '''

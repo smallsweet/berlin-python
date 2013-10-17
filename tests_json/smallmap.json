@@ -1,0 +1,34 @@
+{"action": "turn",
+ "infos":{
+        "current_turn":1,
+        "directed":false,
+        "game_id":"7c7905c6-2423-4a81-b5e7-44ff10cddd5d",
+        "maximum_number_of_turns":25,
+        "number_of_players":2,
+        "player_id":1,
+        "time_limit_per_turn":5000
+    },
+ "map": {
+        "nodes":[
+            { "id":1, "type":"city" },
+            { "id":2, "type":"city" },
+            { "id":3, "type":"city" },
+            { "id":4, "type":"city" }
+        ],
+        "paths":[
+            { "from":1, "to":2 },
+            { "from":2, "to":3 },
+						{ "from":2, "to":4 }
+        ],
+        "types":[
+            { "name":"node", "points":0, "soldiers_per_turn":0 },
+            { "name":"city", "points":1, "soldiers_per_turn":1 }
+        ]
+    },
+	"state": [
+        { "node_id":1, "number_of_soldiers":5, "player_id":1 },
+        { "node_id":2, "number_of_soldiers":0, "player_id":null },
+        { "node_id":3, "number_of_soldiers":5, "player_id":0 },
+        { "node_id":4, "number_of_soldiers":0, "player_id":null }
+    ]
+}

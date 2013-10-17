@@ -93,6 +93,21 @@ class FatCat(tornado.web.RequestHandler):
     self.set_status(200)
     return
 
+
+class Jsonify(tornado.web.RequestHandler):
+  def get(self):
+    self.write("berlin API, send POST please")
+  def post(self):
+    body = self.request.body
+    request = {
+        'action': self.get_argument('action'),
+        'infos': json.loads(self.get_argument('infos')),
+        'map': json.loads(self.get_argument('map')),
+        'state': json.loads(self.get_argument('state'))
+        }
+    print json.dumps(request)
+    return
+
 FORMAT = '%(asctime)s %(levelname)s %(message)s'
 logging.basicConfig(format=FORMAT, level=logging.DEBUG)
 #logging.basicConfig(format=FORMAT, level=logging.INFO, filename='berlin.log')
@@ -103,9 +118,11 @@ catfh.setFormatter(logging.Formatter(FORMAT))
 catlog.addHandler(catfh)
 
 application = tornado.web.Application([
+  (r"/tojson", Jsonify),
   (r"/searchdestroy", SearchAndDestroy),
   (r"/fatcat", FatCat),
   (r"/randombot", MainHandler), ])
+
 
 if __name__ == "__main__":
   print "loaded berlin module %s" % berlin.version
