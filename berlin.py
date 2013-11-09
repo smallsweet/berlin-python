@@ -23,15 +23,21 @@ class Node:
         (self.id, self.points, self.units_per_turn,
             self.owner, self.units, self.edges)
 
+  def to_berlin_state(self):
+    return {'player_id':self.id,'points':self.points,'player_id':self.owner,
+            'number_of_soldiers':self.units}
+        
 class Map:
   def __init__(self, mapdict, directed = False):
     try:
       self.directed = directed
       self.types = {}
+      self.reverse_types_units_per_turn={}
       for t in mapdict['types']:
         self.types[t['name']] = {}
         self.types[t['name']]['points'] = t['points']
         self.types[t['name']]['units_per_turn'] = t['soldiers_per_turn']
+        self.reverse_types_units_per_turn[t['soldiers_per_turn']]={'name':t['name'],'points':t['points']}
 
       self.nodes = {} # should probably be a list, but largest map has
                       # less than 30 nodes, so whatever
@@ -47,6 +53,26 @@ class Map:
     except:
       logging.exception('failed to parse map')
       raise
+
+  def to_berlin(self):
+    paths=[]
+    for nn in self.nodes.values():
+      for pp in nn.edges:
+        paths.append((nn.id,pp))
+    paths=list(set(paths))
+    paths=[{'from':pp[0],'to':pp[1]} for pp in paths]
+    
+    types=[]
+    for name,tt in self.types.items():
+      tt['name']=name
+      types.append(tt)
+    
+    return {'nodes': [{'id': n.id, 
+      'type':self.reverse_types_units_per_turn[n.units_per_turn]} for n in self.nodes.values()],
+            'paths':paths,
+            'types':types,
+    }
+
 
   def __repr__(self):
     return 'Map: directed:%s, types:%s, nodes:%s' % \
@@ -231,7 +257,7 @@ class Game:
       self.timeout = parsed_request['infos']['time_limit_per_turn']
       self.directed = parsed_request['infos']['directed']
       self.m = Map(parsed_request['map'], self.directed)
-      self.m.update(parsed_request['state'])
+      self.m.update(parsed_request['states'])
     except:
       logging.exception('failed to parse game')
       raise
@@ -241,6 +267,16 @@ class Game:
         % (self.action, self.game_id, self.maxturns, self.turn, self.players,
             self.myself, self.timeout, self.m)
 
+  def to_berlin(self):
+    return {'map':self.m.to_berlin(),
+        'action':'turn',
+        'infos':{},
+        'states':[{'node_id':nn.id,
+          'number_of_soldiers':nn.units,
+          'player_id':nn.owner} for nn in self.m.nodes.values()],
+        }
+
+  
   def generate_turn(self):
     '''
     do something here
@@ -265,7 +301,11 @@ def parse_request(request):
   try:
     game = Game(request)
     logging.debug('parsed request: ' + str(game))
-  except:
+  except Exception, e:
+    import traceback
+    traceback.format_exc()
+    import ipdb;ipdb.set_trace()
+    Game(request)
     logging.exception('failed to parse request')
     return None
   return game
@@ -293,7 +333,7 @@ class Match:
     self.sync() # necessary ?
     for player_id in range(self.players):
       resp = self.responses[player_id]
-      if resp is None:
+      if not resp:
         logging.info("skipping missing move for player: %s" % player_id)
         continue
       for move in resp.moves:
@@ -337,7 +377,6 @@ class Match:
   def show(self):
     for nid,node in self.game.m.nodes.items():
   		print node.id,(node.owner and 'B' or 'A')*node.units
-
 
   def resolve_turn(self):
     self.resolve_movement()
